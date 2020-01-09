@@ -56,8 +56,9 @@ abstract class AbstractLoadBalancer implements LoadBalancerInterface
     public function refresh(callable $callback, int $tickMs = 5000)
     {
         Timer::tick($tickMs, function () use ($callback) {
-            $nodes = call($callback);
+            $nodes = call($callback, [$this]);
             is_array($nodes) && $this->setNodes($nodes);
         });
     }
+
 }

@@ -17,6 +17,7 @@ use Hyperf\Guzzle\ClientFactory;
 use Hyperf\LoadBalancer\LoadBalancerInterface;
 use Hyperf\LoadBalancer\Node;
 use Hyperf\Rpc\Contract\TransporterInterface;
+use Throwable;
 
 class JsonRpcHttpTransporter implements TransporterInterface
 {
@@ -55,32 +56,47 @@ class JsonRpcHttpTransporter implements TransporterInterface
 
     public function send(string $data)
     {
-        $node = $this->getNode();
-        $uri = $node->host . ':' . $node->port;
-        $schema = value(function () use ($node) {
-            $schema = 'http';
-            if (property_exists($node, 'schema')) {
-                $schema = $node->schema;
+        $exception = null;
+        try {
+            $i = 1;
+            while ($node = $this->getNode()) {
+                echo $i;
+                $i++;
+                try {
+                    $uri = $node->host . ':' . $node->port;
+                    $schema = value(function () use ($node) {
+                        $schema = 'http';
+                        if (property_exists($node, 'schema')) {
+                            $schema = $node->schema;
+                        }
+                        if (! in_array($schema, ['http', 'https'])) {
+                            $schema = 'http';
+                        }
+                        $schema .= '://';
+                        return $schema;
+                    });
+                    $url = $schema . $uri;
+                    $response = $this->getClient()->post($url, [
+                        'headers' => [
+                            'Content-Type' => 'application/json',
+                        ],
+                        'http_errors' => false,
+                        'body' => $data,
+                    ]);
+                    if ($response->getStatusCode() >= 200 and $response->getStatusCode() < 300) {
+                        return $response->getBody()->getContents();
+                    }
+                } catch (\Exception $exception) {
+                    isset($node) && $this->loadBalancer->removeNode($node);
+                    $exception = $exception;
+                }
             }
-            if (! in_array($schema, ['http', 'https'])) {
-                $schema = 'http';
-            }
-            $schema .= '://';
-            return $schema;
-        });
-        $url = $schema . $uri;
-        $response = $this->getClient()->post($url, [
-            'headers' => [
-                'Content-Type' => 'application/json',
-            ],
-            'http_errors' => false,
-            'body' => $data,
-        ]);
-        if ($response->getStatusCode() === 200) {
-            return $response->getBody()->getContents();
+        } catch (\RuntimeException $exception) {
+            throw $exception;
         }
-        $this->loadBalancer->removeNode($node);
-
+        if ($exception instanceof Throwable) {
+            throw $exception;
+        }
         return '';
     }
 
@@ -129,6 +145,9 @@ class JsonRpcHttpTransporter implements TransporterInterface
     {
         if ($this->loadBalancer instanceof LoadBalancerInterface) {
             return $this->loadBalancer->select();
+        }
+        if (empty($this->nodes)) {
+            throw new \RuntimeException('Cannot select any node from node list.');
         }
         return $this->nodes[array_rand($this->nodes)];
     }
