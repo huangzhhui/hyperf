@@ -62,7 +62,8 @@
         "symfony/property-access": "^4.3",
         "symfony/serializer": "^4.3",
         "sy-records/think-template": "^2.0",
-        "twig/twig": "^2.12"
+        "twig/twig": "^2.12",
+        "casbin/casbin": "^2.1"
     },
     "replace": {
         "hyperf/amqp": "self.version",
